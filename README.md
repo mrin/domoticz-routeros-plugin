@@ -47,18 +47,18 @@ Restart the Domoticz service
 sudo service domoticz.sh restart
 ```
 
-##Screenshots
+## Screenshots
+
 ![routeros_down](https://user-images.githubusercontent.com/93999/29780502-b4b75974-8c1e-11e7-9de1-bfd53f4347a9.png)
 ![routeros_up](https://user-images.githubusercontent.com/93999/29780501-b4b6bb54-8c1e-11e7-8999-de769cc67013.png)
 
+## Configure API credentials
 
-##Configure API credentials
-
-###Winbox
+### Winbox
 
 1. Enabling API.
 
-Go to **IP** -> **Services** and enable "**api**" service.
+Go to **IP** -> **Services** and enable **api** service.
 
 2. Creating API user. 
 
