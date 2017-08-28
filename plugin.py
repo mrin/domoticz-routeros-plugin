@@ -1,8 +1,8 @@
 """
-<plugin key="mikrotik-routeros" name="Mikrotik RouterOS" author="mrin" version="0.0.1" wikilink="" externallink="">
+<plugin key="mikrotik-routeros" name="Mikrotik RouterOS" author="mrin" version="0.0.1" wikilink="https://github.com/mrin/domoticz-routeros-plugin" externallink="">
     <params>
         <param field="Address" label="IP address" width="200px" required="true" default="192.168.1.1"/>
-        <param field="Port" label="Port" width="200px" required="true" default="8728"/>
+        <param field="Port" label="API Port" width="200px" required="true" default="8728"/>
         <param field="Username" label="API Username" width="200px" required="true" default="api"/>
         <param field="Password" label="API Password" width="200px" required="true" default="yourpassword"/>
         <param field="Mode1" label="Update interval (sec)" width="200px" required="true" default="2"/>
