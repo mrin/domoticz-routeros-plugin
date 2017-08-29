@@ -13,10 +13,14 @@ cd domoticz/plugins
 git clone https://github.com/mrin/domoticz-routeros-plugin.git mikrotik
 ```
 Then go to plugin folder and install dependencies:
+
+*Also do note that the setuptools version is too old for installing some requirements, so before trying to install this package you should update the setuptools with ```pip3 install -U setuptools```.*
+
 ```
 cd mikrotik
 pip3 install librouteros -t .vendors
 ```
+
 Restart the Domoticz service
 ```
 sudo service domoticz.sh restart
