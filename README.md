@@ -1,6 +1,7 @@
 # Mikrotik RouterOS - Domoticz Python plugin
 
-Bandwidth monitor of specified interface.
+Plugin supports:
+* Bandwidth usage monitor for specified interface.
 
 *See this [link](https://www.domoticz.com/wiki/Using_Python_plugins) for more information on the Domoticz plugins.*
 
@@ -54,7 +55,7 @@ sudo service domoticz.sh restart
 
 ## Configure API credentials
 
-### Winbox
+*RouterOS Winbox*
 
 1. Enabling API.
 
