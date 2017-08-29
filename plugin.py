@@ -92,7 +92,6 @@ def UpdateDevice(Unit, nValue, sValue, AlwaysUpdate=False):
     if Unit not in Devices: return
     if Devices[Unit].nValue != nValue\
         or Devices[Unit].sValue != sValue\
-        or Devices[Unit].BatteryLevel != BatteryLevel\
         or AlwaysUpdate == True:
 
         Devices[Unit].Update(nValue, str(sValue))
