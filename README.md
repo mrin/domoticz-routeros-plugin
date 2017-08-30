@@ -7,14 +7,20 @@ Plugin supports:
 
 ## Installation
 
+Before installation plugin check the `python3` and `python3-dev` is installed for Domoticz plugin system:
+
+```sudo apt-get install python3 python3-dev```
+
+Also do note that the setuptools version is too old for installing some requirements, so before trying to install this package you should update the setuptools with:
+
+```pip3 install -U setuptools```.
+
 Go to plugins folder and clone plugin:
 ```
 cd domoticz/plugins
 git clone https://github.com/mrin/domoticz-routeros-plugin.git mikrotik
 ```
 Then go to plugin folder and install dependencies:
-
-*Also do note that the setuptools version is too old for installing some requirements, so before trying to install this package you should update the setuptools with ```pip3 install -U setuptools```.*
 
 ```
 cd mikrotik
