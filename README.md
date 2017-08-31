@@ -60,8 +60,9 @@ sudo service domoticz.sh restart
 
 ## Screenshots
 
-![routeros_down](https://user-images.githubusercontent.com/93999/29780502-b4b75974-8c1e-11e7-9de1-bfd53f4347a9.png)
-![routeros_up](https://user-images.githubusercontent.com/93999/29780501-b4b6bb54-8c1e-11e7-8999-de769cc67013.png)
+![up](https://user-images.githubusercontent.com/93999/29917940-36cd4d54-8e4c-11e7-835f-9638d0171809.png)
+![down](https://user-images.githubusercontent.com/93999/29917941-36d48240-8e4c-11e7-9a45-6d241c687753.png)
+
 
 ## Configure API credentials
 

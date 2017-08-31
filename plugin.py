@@ -29,6 +29,8 @@ import math
 class BasePlugin:
     bwOptions = {"Custom": "1;Mbit/s"}
 
+    iconName = 'winbox'
+
     bwUpUnit = 1
     bwDownUnit = 2
 
@@ -39,10 +41,15 @@ class BasePlugin:
             Domoticz.Debugging(1)
             DumpConfigToLog()
 
+        if self.iconName not in Images: Domoticz.Image('icons.zip').Create()
+        iconID = Images[self.iconName].ID
+
         if self.bwUpUnit not in Devices:
-            Domoticz.Device(Name='Bandwidth UP', Unit=self.bwUpUnit, TypeName='Custom', Options=self.bwOptions).Create()
+            Domoticz.Device(Name='Bandwidth UP', Unit=self.bwUpUnit, TypeName='Custom', Options=self.bwOptions,
+                            Image=iconID).Create()
         if self.bwDownUnit not in Devices:
-            Domoticz.Device(Name='Bandwidth Down', Unit=self.bwDownUnit, TypeName='Custom', Options=self.bwOptions).Create()
+            Domoticz.Device(Name='Bandwidth Down', Unit=self.bwDownUnit, TypeName='Custom', Options=self.bwOptions,
+                            Image=iconID).Create()
 
         try:
             self.api = connect(host=Parameters['Address'], port=int(Parameters['Port']), username=Parameters['Username'], password=Parameters['Password'])
