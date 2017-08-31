@@ -1,5 +1,5 @@
 """
-<plugin key="mikrotik-routeros" name="Mikrotik RouterOS" author="mrin" version="0.0.1" wikilink="https://github.com/mrin/domoticz-routeros-plugin" externallink="">
+<plugin key="mikrotik-routeros" name="Mikrotik RouterOS" author="mrin" version="0.0.2" wikilink="https://github.com/mrin/domoticz-routeros-plugin" externallink="">
     <params>
         <param field="Address" label="IP address" width="200px" required="true" default="192.168.1.1"/>
         <param field="Port" label="API Port" width="200px" required="true" default="8728"/>
@@ -78,7 +78,7 @@ class BasePlugin:
 
         try:
             result, = self.api(cmd='/interface/monitor-traffic', interface=Parameters['Mode2'], once=True)
-            Domoticz.Log('Traffic monitor: %s' % str(result))
+            Domoticz.Debug('Traffic monitor: %s' % str(result))
             UpdateDevice(self.bwDownUnit, 1, str(bitToMbit(result.get('rx-bits-per-second', 0))))
             UpdateDevice(self.bwUpUnit, 1, str(bitToMbit(result.get('tx-bits-per-second', 0))))
         except (ConnectionError, TrapError, FatalError, MultiTrapError) as e:
