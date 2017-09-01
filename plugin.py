@@ -1,5 +1,5 @@
 """
-<plugin key="mikrotik-routeros" name="Mikrotik RouterOS" author="mrin" version="0.0.2" wikilink="https://github.com/mrin/domoticz-routeros-plugin" externallink="">
+<plugin key="mikrotik-routeros" name="Mikrotik RouterOS" author="mrin" version="0.0.3" wikilink="https://github.com/mrin/domoticz-routeros-plugin" externallink="">
     <params>
         <param field="Address" label="IP address" width="200px" required="true" default="192.168.1.1"/>
         <param field="Port" label="API Port" width="200px" required="true" default="8728"/>
@@ -29,7 +29,7 @@ import math
 class BasePlugin:
     bwOptions = {"Custom": "1;Mbit/s"}
 
-    iconName = 'winbox'
+    iconName = 'mikrotik-routeros-winbox'
 
     bwUpUnit = 1
     bwDownUnit = 2
@@ -51,10 +51,12 @@ class BasePlugin:
             Domoticz.Device(Name='Bandwidth Down', Unit=self.bwDownUnit, TypeName='Custom', Options=self.bwOptions,
                             Image=iconID).Create()
 
-        try:
-            self.api = connect(host=Parameters['Address'], port=int(Parameters['Port']), username=Parameters['Username'], password=Parameters['Password'])
-        except (ConnectionError, TrapError, FatalError, MultiTrapError) as e:
-            Domoticz.Error('Connect exception: %s' % str(e))
+        # todo remove it in future releases
+        UpdateIcon(self.bwUpUnit, iconID)
+        UpdateIcon(self.bwDownUnit, iconID)
+
+        self.api = APIConnect(host=Parameters['Address'], port=int(Parameters['Port']),
+                              username=Parameters['Username'], password=Parameters['Password'])
 
         Domoticz.Heartbeat(int(Parameters['Mode1']))
 
@@ -81,6 +83,8 @@ class BasePlugin:
 
         if not self.api:
             Domoticz.Error('onHeartbeat - no connection to %s' % Parameters['Address'])
+            self.api = APIConnect(host=Parameters['Address'], port=int(Parameters['Port']),
+                                  username=Parameters['Username'], password=Parameters['Password'])
             return
 
         try:
@@ -88,9 +92,18 @@ class BasePlugin:
             Domoticz.Debug('Traffic monitor: %s' % str(result))
             UpdateDevice(self.bwDownUnit, 1, str(bitToMbit(result.get('rx-bits-per-second', 0))))
             UpdateDevice(self.bwUpUnit, 1, str(bitToMbit(result.get('tx-bits-per-second', 0))))
-        except (ConnectionError, TrapError, FatalError, MultiTrapError) as e:
-            Domoticz.Error('onHeartbeat api exception: %s' % str(e))
+        except ConnectionError as e:
+            Domoticz.Error('onHeartbeat api exception [%s]: %s' % (e.__class__.__name__, str(e)))
+            self.api = None
+        except (TrapError, FatalError, MultiTrapError) as e:
+            Domoticz.Error('onHeartbeat api exception [%s]: %s' % (e.__class__.__name__, str(e)))
 
+def APIConnect(host, port, username, password):
+    try:
+        return connect(host=host, port=port, username=username, password=password)
+    except (ConnectionError, TrapError, FatalError, MultiTrapError) as e:
+        Domoticz.Error('Connect exception: %s' % str(e))
+        return False
 
 def bitToMbit(value):
     return math.ceil(value / 1000000 * 100) / 100
@@ -108,6 +121,12 @@ def UpdateDevice(Unit, nValue, sValue, AlwaysUpdate=False):
             nValue,
             sValue
         ))
+
+def UpdateIcon(Unit, iconID):
+    if Unit not in Devices: return
+    d = Devices[Unit]
+    if d.Image != iconID: d.Update(d.nValue, d.sValue, Image=iconID)
+
 
 global _plugin
 _plugin = BasePlugin()
