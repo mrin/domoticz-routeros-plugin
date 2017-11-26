@@ -5,8 +5,9 @@
         <param field="Port" label="API Port" width="200px" required="true" default="8728"/>
         <param field="Username" label="API Username" width="200px" required="true" default="api"/>
         <param field="Password" label="API Password" width="200px" required="true" default="yourpassword"/>
-        <param field="Mode1" label="Update interval (sec)" width="200px" required="true" default="2"/>
-        <param field="Mode2" label="Interface" width="200px" required="true" default="ether1"/>
+        <param field="Mode1" label="Update interval (sec)" width="200px" required="true" default="5"/>
+        <param field="Mode2" label="Bandwidth Interface" width="200px" required="true" default="ether1"/>
+        <param field="Mode3" label="Status Interface" width="200px" required="true" default="ether1"/>
         <param field="Mode6" label="Debug" width="75px">
             <options>
                 <option label="True" value="Debug" default="true"/>
@@ -18,7 +19,9 @@
 """
 import os
 import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '.', '.vendors'))
+module_paths = [x[0] for x in os.walk( os.path.join(os.path.dirname(__file__), '.', '.env/lib/') ) if x[0].endswith('site-packages') ]
+for mp in module_paths:
+    sys.path.append(mp)
 
 import Domoticz
 from librouteros import connect
@@ -33,13 +36,17 @@ class BasePlugin:
 
     bwUpUnit = 1
     bwDownUnit = 2
+    statusUnit = 3
 
+    statusInterfaceName = None
     api = None
 
     def onStart(self):
         if Parameters['Mode6'] == 'Debug':
             Domoticz.Debugging(1)
             DumpConfigToLog()
+
+        self.statusInterfaceName = Parameters['Mode3']
 
         if self.iconName not in Images: Domoticz.Image('icons.zip').Create()
         iconID = Images[self.iconName].ID
@@ -50,10 +57,8 @@ class BasePlugin:
         if self.bwDownUnit not in Devices:
             Domoticz.Device(Name='Bandwidth Down', Unit=self.bwDownUnit, TypeName='Custom', Options=self.bwOptions,
                             Image=iconID).Create()
-
-        # todo remove it in future releases
-        UpdateIcon(self.bwUpUnit, iconID)
-        UpdateIcon(self.bwDownUnit, iconID)
+        if self.statusUnit not in Devices:
+            Domoticz.Device(Name='Status', Unit=self.statusUnit, TypeName='Switch', Image=iconID).Create()
 
         self.api = APIConnect(host=Parameters['Address'], port=int(Parameters['Port']),
                               username=Parameters['Username'], password=Parameters['Password'])
@@ -72,6 +77,24 @@ class BasePlugin:
     def onCommand(self, Unit, Command, Level, Hue):
         Domoticz.Debug("onCommand called for Unit " + str(Unit) + ": Parameter '" + str(Command) + "', Level: " + str(Level))
 
+        if self.statusUnit == Unit:
+            iface = self.apiGetInterfaceStatus(self.statusInterfaceName)
+            if not iface: return
+
+            if 'On' == Command:
+                if iface['disabled'] == True:
+                    self.changeInterfaceStatus(iface, enabled=True)
+
+                # reconnect interface
+                elif iface['running'] == False:
+                    self.changeInterfaceStatus(iface, enabled=False)
+                    self.changeInterfaceStatus(iface, enabled=True)
+
+            elif 'Off' == Command and iface['disabled'] == False:
+                if isinstance(self.changeInterfaceStatus(iface, enabled=False), tuple):
+                    UpdateDevice(self.statusUnit, 0, '0')
+
+
     def onNotification(self, Name, Subject, Text, Status, Priority, Sound, ImageFile):
         Domoticz.Debug("Notification: " + Name + "," + Subject + "," + Text + "," + Status + "," + str(Priority) + "," + Sound + "," + ImageFile)
 
@@ -82,21 +105,51 @@ class BasePlugin:
         Domoticz.Debug("onHeartbeat called")
 
         if not self.api:
-            Domoticz.Error('onHeartbeat - no connection to %s' % Parameters['Address'])
+            Domoticz.Error('onHeartbeat - no connection to %s. Re-connect...' % Parameters['Address'])
             self.api = APIConnect(host=Parameters['Address'], port=int(Parameters['Port']),
                                   username=Parameters['Username'], password=Parameters['Password'])
             return
 
+        stats = self.apiCommand(cmd='/interface/monitor-traffic', interface=Parameters['Mode2'], once=True)
+        if stats:
+            bw, = stats
+            Domoticz.Debug('Traffic monitor: %s' % str(bw))
+            UpdateDevice(self.bwDownUnit, 1, str(bitToMbit(bw.get('rx-bits-per-second', 0))))
+            UpdateDevice(self.bwUpUnit, 1, str(bitToMbit(bw.get('tx-bits-per-second', 0))))
+
+        if not Parameters['Mode3']: return
+
+        iface = self.apiGetInterfaceStatus(self.statusInterfaceName)
+        if iface:
+            if iface['running']:
+                UpdateDevice(self.statusUnit, 1, '100')
+            else:
+                UpdateDevice(self.statusUnit, 0, '0')
+
+    def apiCommand(self, **kwargs):
+        if not self.api: return None
+        result = None
         try:
-            result, = self.api(cmd='/interface/monitor-traffic', interface=Parameters['Mode2'], once=True)
-            Domoticz.Debug('Traffic monitor: %s' % str(result))
-            UpdateDevice(self.bwDownUnit, 1, str(bitToMbit(result.get('rx-bits-per-second', 0))))
-            UpdateDevice(self.bwUpUnit, 1, str(bitToMbit(result.get('tx-bits-per-second', 0))))
+            result = self.api(**kwargs)
         except ConnectionError as e:
-            Domoticz.Error('onHeartbeat api exception [%s]: %s' % (e.__class__.__name__, str(e)))
+            Domoticz.Error('api exception [%s]: %s' % (e.__class__.__name__, e))
             self.api = None
         except (TrapError, FatalError, MultiTrapError) as e:
-            Domoticz.Error('onHeartbeat api exception [%s]: %s' % (e.__class__.__name__, str(e)))
+            Domoticz.Error('api exception [%s]: %s' % (e.__class__.__name__, e))
+        finally:
+            return result
+
+    def apiGetInterfaceStatus(self, name):
+        interfaces = self.apiCommand(cmd='/interface/print')
+        if interfaces:
+            for iface in interfaces:
+                if iface['name'] == name: return iface
+            Domoticz.Error('Interface [%s] not found' % name)
+            return None
+        return None
+
+    def changeInterfaceStatus(self, iface, enabled):
+        self.apiCommand(cmd='/interface/set', **{'disabled': (not enabled), '.id': iface['.id']})
 
 def APIConnect(host, port, username, password):
     try:
@@ -121,11 +174,6 @@ def UpdateDevice(Unit, nValue, sValue, AlwaysUpdate=False):
             nValue,
             sValue
         ))
-
-def UpdateIcon(Unit, iconID):
-    if Unit not in Devices: return
-    d = Devices[Unit]
-    if d.Image != iconID: d.Update(d.nValue, d.sValue, Image=iconID)
 
 
 global _plugin

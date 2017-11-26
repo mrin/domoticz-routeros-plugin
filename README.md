@@ -11,26 +11,26 @@ Before installation plugin check the `python3` and `python3-dev` is installed fo
 
 ```sudo apt-get install python3 python3-dev```
 
-Also do note that the setuptools version is too old for installing some requirements, so before trying to install this package you should update the setuptools with:
+Also need to install setuptools and virtualenv:
 
-```pip3 install -U setuptools```.
+```sudo pip3 install -U setuptools virtualenv```.
 
-Go to plugins folder and clone plugin:
+Then go to the plugins folder:
 ```
 cd domoticz/plugins
 git clone https://github.com/mrin/domoticz-routeros-plugin.git mikrotik
-```
-Then go to plugin folder and install dependencies:
 
-```
-cd mikrotik
-pip3 install librouteros -t .vendors
+# installing dependencies:
+virtualenv -p python3 .env
+source .env/bin/activate
+pip3 install librouteros==1.0.4
 ```
 
 Restart the Domoticz service
 ```
 sudo service domoticz.sh restart
 ```
+
 Now go to **Setup** -> **Hardware** in your Domoticz interface and add type with name **Mikrotik RouterOS**.
 
 | Field | Information|
