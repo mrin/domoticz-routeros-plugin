@@ -24,8 +24,8 @@ for mp in module_paths:
     sys.path.append(mp)
 
 import Domoticz
-from librouteros import connect
-from librouteros.exceptions import TrapError, FatalError, ConnectionError, MultiTrapError
+from miktapi.sentence import sentence_pack, SentenceUnpacker
+from miktapi.helper import SentenceParser, password_encode
 import math
 
 
@@ -38,15 +38,15 @@ class BasePlugin:
     bwDownUnit = 2
     statusUnit = 3
 
-    statusInterfaceName = None
-    api = None
+    def __init__(self):
+        self.miktLoggedIn = False
+        self.miktConn = None
+        self.miktUnpacker = SentenceUnpacker()
 
     def onStart(self):
         if Parameters['Mode6'] == 'Debug':
             Domoticz.Debugging(1)
             DumpConfigToLog()
-
-        self.statusInterfaceName = Parameters['Mode3']
 
         if self.iconName not in Images: Domoticz.Image('icons.zip').Create()
         iconID = Images[self.iconName].ID
@@ -60,103 +60,107 @@ class BasePlugin:
         if self.statusUnit not in Devices:
             Domoticz.Device(Name='Status', Unit=self.statusUnit, TypeName='Switch', Image=iconID).Create()
 
-        self.api = APIConnect(host=Parameters['Address'], port=int(Parameters['Port']),
-                              username=Parameters['Username'], password=Parameters['Password'])
+        self.miktConn = Domoticz.Connection(Name='Mikrotik', Transport='TCP/IP', Protocol='None',
+                                            Address=Parameters['Address'], Port=int(Parameters['Port']))
 
         Domoticz.Heartbeat(int(Parameters['Mode1']))
 
     def onStop(self):
-        Domoticz.Debug("onStop called")
+        pass
 
     def onConnect(self, Connection, Status, Description):
-        Domoticz.Debug("onConnect called")
+        self.miktLoggedIn = False
+        if Status == 0:
+            self.miktConn.Send(sentence_pack(['/login', '.tag=initial_login']))
+        else:
+            Domoticz.Error("Mikrotik connection error.  Status [%s] [%s]" % (Status, Description))
+
 
     def onMessage(self, Connection, Data):
-        Domoticz.Debug("onMessage called")
+        self.miktUnpacker.feed(Data)
+        for sentence in self.miktUnpacker:
+            reply, tag, words = SentenceParser.parse_sentence(sentence)
+
+            if tag == 'initial_login' and reply == '!done':
+                self.miktConn.Send(sentence_pack([
+                    '/login',
+                    '=name=%s' % Parameters['Username'],
+                    '=response=%s' % password_encode(Parameters['Password'], words['ret']),
+                    '.tag=authorize'
+                ]))
+            elif tag == 'authorize' and reply == '!done':
+                self.miktLoggedIn = True
+                if Parameters['Mode3']:
+                    self.miktCommand([
+                        '/interface/listen',
+                        '=.proplist=id,running,disabled'
+                        '?name=%s' % Parameters['Mode3'],
+                        '.tag=interface_status'
+                    ])
+            elif tag == 'interface_status' and reply == '!re':
+                pass
+
+
 
     def onCommand(self, Unit, Command, Level, Hue):
         Domoticz.Debug("onCommand called for Unit " + str(Unit) + ": Parameter '" + str(Command) + "', Level: " + str(Level))
 
-        if self.statusUnit == Unit:
-            iface = self.apiGetInterfaceStatus(self.statusInterfaceName)
-            if not iface: return
-
-            if 'On' == Command:
-                if iface['disabled'] == True:
-                    self.changeInterfaceStatus(iface, enabled=True)
-
-                # reconnect interface
-                elif iface['running'] == False:
-                    self.changeInterfaceStatus(iface, enabled=False)
-                    self.changeInterfaceStatus(iface, enabled=True)
-
-            elif 'Off' == Command and iface['disabled'] == False:
-                if isinstance(self.changeInterfaceStatus(iface, enabled=False), tuple):
-                    UpdateDevice(self.statusUnit, 0, '0')
+        # if self.statusUnit == Unit:
+        #     iface = self.apiGetInterfaceStatus(self.statusInterfaceName)
+        #     if not iface: return
+        #
+        #     if 'On' == Command:
+        #         if iface['disabled'] == True:
+        #             self.changeInterfaceStatus(iface, enabled=True)
+        #
+        #         # reconnect interface
+        #         elif iface['running'] == False:
+        #             self.changeInterfaceStatus(iface, enabled=False)
+        #             self.changeInterfaceStatus(iface, enabled=True)
+        #
+        #     elif 'Off' == Command and iface['disabled'] == False:
+        #         if isinstance(self.changeInterfaceStatus(iface, enabled=False), tuple):
+        #             UpdateDevice(self.statusUnit, 0, '0')
 
 
     def onNotification(self, Name, Subject, Text, Status, Priority, Sound, ImageFile):
         Domoticz.Debug("Notification: " + Name + "," + Subject + "," + Text + "," + Status + "," + str(Priority) + "," + Sound + "," + ImageFile)
 
     def onDisconnect(self, Connection):
-        Domoticz.Debug("onDisconnect called")
+        self.miktLoggedIn = False
 
     def onHeartbeat(self):
         Domoticz.Debug("onHeartbeat called")
 
-        if not self.api:
-            Domoticz.Error('onHeartbeat - no connection to %s. Re-connect...' % Parameters['Address'])
-            self.api = APIConnect(host=Parameters['Address'], port=int(Parameters['Port']),
-                                  username=Parameters['Username'], password=Parameters['Password'])
-            return
+        # if not self.miktConn:
+        #     Domoticz.Error('onHeartbeat - no connection to %s. Re-connect...' % Parameters['Address'])
+        #     self.miktConn = APIConnect(host=Parameters['Address'], port=int(Parameters['Port']),
+        #                                username=Parameters['Username'], password=Parameters['Password'])
+        #     return
+        #
+        # stats = self.apiCommand(cmd='/interface/monitor-traffic', interface=Parameters['Mode2'], once=True)
+        # if stats:
+        #     bw, = stats
+        #     Domoticz.Debug('Traffic monitor: %s' % str(bw))
+        #     UpdateDevice(self.bwDownUnit, 1, str(bitToMbit(bw.get('rx-bits-per-second', 0))))
+        #     UpdateDevice(self.bwUpUnit, 1, str(bitToMbit(bw.get('tx-bits-per-second', 0))))
+        #
+        # if not Parameters['Mode3']: return
+        #
+        # iface = self.apiGetInterfaceStatus(self.statusInterfaceName)
+        # if iface:
+        #     if iface['running']:
+        #         UpdateDevice(self.statusUnit, 1, '100')
+        #     else:
+        #         UpdateDevice(self.statusUnit, 0, '0')
 
-        stats = self.apiCommand(cmd='/interface/monitor-traffic', interface=Parameters['Mode2'], once=True)
-        if stats:
-            bw, = stats
-            Domoticz.Debug('Traffic monitor: %s' % str(bw))
-            UpdateDevice(self.bwDownUnit, 1, str(bitToMbit(bw.get('rx-bits-per-second', 0))))
-            UpdateDevice(self.bwUpUnit, 1, str(bitToMbit(bw.get('tx-bits-per-second', 0))))
+    def miktCommand(self, words_list):
+        if self.miktConn.Connected() and self.miktLoggedIn:
+            self.miktConn.Send(sentence_pack(words_list))
 
-        if not Parameters['Mode3']: return
+    # def changeInterfaceStatus(self, iface, enabled):
+    #     self.miktCommand(cmd='/interface/set', **{'disabled': (not enabled), '.id': iface['.id']})
 
-        iface = self.apiGetInterfaceStatus(self.statusInterfaceName)
-        if iface:
-            if iface['running']:
-                UpdateDevice(self.statusUnit, 1, '100')
-            else:
-                UpdateDevice(self.statusUnit, 0, '0')
-
-    def apiCommand(self, **kwargs):
-        if not self.api: return None
-        result = None
-        try:
-            result = self.api(**kwargs)
-        except ConnectionError as e:
-            Domoticz.Error('api exception [%s]: %s' % (e.__class__.__name__, e))
-            self.api = None
-        except (TrapError, FatalError, MultiTrapError) as e:
-            Domoticz.Error('api exception [%s]: %s' % (e.__class__.__name__, e))
-        finally:
-            return result
-
-    def apiGetInterfaceStatus(self, name):
-        interfaces = self.apiCommand(cmd='/interface/print')
-        if interfaces:
-            for iface in interfaces:
-                if iface['name'] == name: return iface
-            Domoticz.Error('Interface [%s] not found' % name)
-            return None
-        return None
-
-    def changeInterfaceStatus(self, iface, enabled):
-        self.apiCommand(cmd='/interface/set', **{'disabled': (not enabled), '.id': iface['.id']})
-
-def APIConnect(host, port, username, password):
-    try:
-        return connect(host=host, port=port, username=username, password=password)
-    except (ConnectionError, TrapError, FatalError, MultiTrapError) as e:
-        Domoticz.Error('Connect exception: %s' % str(e))
-        return False
 
 def bitToMbit(value):
     return math.ceil(value / 1000000 * 100) / 100
