@@ -1,7 +1,8 @@
 # Mikrotik RouterOS - Domoticz Python plugin
 
 Plugin supports:
-* Bandwidth usage monitor for specified interface.
+* Bandwidth usage monitor for selected interface.
+* View/Manage status of interface
 
 *See this [link](https://www.domoticz.com/wiki/Using_Python_plugins) for more information on the Domoticz plugins.*
 
@@ -23,7 +24,8 @@ git clone https://github.com/mrin/domoticz-routeros-plugin.git mikrotik
 # installing dependencies:
 virtualenv -p python3 .env
 source .env/bin/activate
-pip3 install librouteros==1.0.4
+pip install git+https://github.com/mrin/miktapi
+deactivate
 ```
 
 Restart the Domoticz service
@@ -41,7 +43,8 @@ Now go to **Setup** -> **Hardware** in your Domoticz interface and add type with
 | API Username | routeros username (see Configure API credentials) |
 | API Password | routeros password (see Configure API credentials) |
 | Update interval | In seconds, this determines with which interval the plugin polls RouterOS stats |
-| Interface | Interface name, ex. ```pppoe-out1```, ```ether2``` |
+| Bandwidth Interface | Interface name, ex. ```pppoe-out1```, ```ether2``` |
+| Status Interface | Interface name, ex. ```pppoe-out1```, ```ether2``` |
 | Debug | When set to true the plugin shows additional information in the Domoticz log |
 
 After clicking on the Add button the new devices are available in **Setup** -> **Devices**.
@@ -62,7 +65,7 @@ sudo service domoticz.sh restart
 
 ![up](https://user-images.githubusercontent.com/93999/29917940-36cd4d54-8e4c-11e7-835f-9638d0171809.png)
 ![down](https://user-images.githubusercontent.com/93999/29917941-36d48240-8e4c-11e7-9a45-6d241c687753.png)
-
+![status](https://user-images.githubusercontent.com/93999/33553637-9a16eed4-d90a-11e7-93f1-58e5411dc191.png)
 
 ## Configure API credentials
 
