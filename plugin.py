@@ -1,12 +1,13 @@
 """
-<plugin key="mikrotik-routeros" name="Mikrotik RouterOS" author="mrin" version="0.0.3" wikilink="https://github.com/mrin/domoticz-routeros-plugin" externallink="">
+<plugin key="mikrotik-routeros" name="Mikrotik RouterOS" author="mrin" version="0.1.0" wikilink="https://github.com/mrin/domoticz-routeros-plugin" externallink="">
     <params>
         <param field="Address" label="IP address" width="200px" required="true" default="192.168.1.1"/>
         <param field="Port" label="API Port" width="200px" required="true" default="8728"/>
         <param field="Username" label="API Username" width="200px" required="true" default="api"/>
         <param field="Password" label="API Password" width="200px" required="true" default="yourpassword"/>
-        <param field="Mode1" label="Update interval (sec)" width="200px" required="true" default="2"/>
-        <param field="Mode2" label="Interface" width="200px" required="true" default="ether1"/>
+        <param field="Mode1" label="Update interval (sec)" width="200px" required="true" default="5"/>
+        <param field="Mode2" label="Bandwidth Interface" width="200px" required="true" default="ether1"/>
+        <param field="Mode3" label="Status Interface" width="200px" required="true" default="ether1"/>
         <param field="Mode6" label="Debug" width="75px">
             <options>
                 <option label="True" value="Debug" default="true"/>
@@ -16,14 +17,18 @@
     </params>
 </plugin>
 """
+import Domoticz
+import math
+
 import os
 import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '.', '.vendors'))
+module_paths = [x[0] for x in os.walk( os.path.join(os.path.dirname(__file__), '.', '.env/lib/') ) if x[0].endswith('site-packages') ]
+for mp in module_paths:
+    sys.path.append(mp)
 
-import Domoticz
-from librouteros import connect
-from librouteros.exceptions import TrapError, FatalError, ConnectionError, MultiTrapError
-import math
+from miktapi.sentence import sentence_pack, SentenceUnpacker
+from miktapi.helper import SentenceParser, password_encode
+from miktapi.exceptions import UnpackerException, ParseException, PackException
 
 
 class BasePlugin:
@@ -33,8 +38,22 @@ class BasePlugin:
 
     bwUpUnit = 1
     bwDownUnit = 2
+    statusUnit = 3
 
-    api = None
+    statusOptions = {
+        "LevelActions": "||",
+        "LevelNames": "Disabled|Running|Enabled",
+        "SelectorStyle": "0"
+    }
+
+    def __init__(self):
+        self.miktLoggedIn = False
+        self.miktAuthError = False
+        self.miktConn = None
+        self.miktUnpacker = SentenceUnpacker()
+        self.statusInterfaceId = None
+        self.statusRunning = None
+        self.statusDisabled = None
 
     def onStart(self):
         if Parameters['Mode6'] == 'Debug':
@@ -50,124 +69,211 @@ class BasePlugin:
         if self.bwDownUnit not in Devices:
             Domoticz.Device(Name='Bandwidth Down', Unit=self.bwDownUnit, TypeName='Custom', Options=self.bwOptions,
                             Image=iconID).Create()
+        if self.statusUnit not in Devices:
+            Domoticz.Device(Name='Status', Unit=self.statusUnit, TypeName='Selector Switch', Image=iconID,
+                            Options=self.statusOptions).Create()
 
-        # todo remove it in future releases
-        UpdateIcon(self.bwUpUnit, iconID)
-        UpdateIcon(self.bwDownUnit, iconID)
-
-        self.api = APIConnect(host=Parameters['Address'], port=int(Parameters['Port']),
-                              username=Parameters['Username'], password=Parameters['Password'])
+        self.miktConn = Domoticz.Connection(Name='Mikrotik', Transport='TCP/IP', Protocol='None',
+                                            Address=Parameters['Address'], Port=Parameters['Port'])
+        self.miktConn.Connect()
 
         Domoticz.Heartbeat(int(Parameters['Mode1']))
 
     def onStop(self):
-        Domoticz.Debug("onStop called")
+        if Parameters['Mode3'] and self.miktConn.Connected() and self.miktLoggedIn:
+            self._miktCommand([
+                '/cancel',
+                '=tag=interface_status_update'
+            ])
+        self._miktResetLoginFlags()
 
     def onConnect(self, Connection, Status, Description):
-        Domoticz.Debug("onConnect called")
+        self._miktResetLoginFlags()
+        if Status == 0:
+            Domoticz.Log('Mikrotik connected. Login...')
+            self.miktConn.Send(sentence_pack(['/login', '.tag=initial_login']))
+        else:
+            Domoticz.Error("Mikrotik connection error.  Status [%s] [%s]" % (Status, Description))
 
     def onMessage(self, Connection, Data):
-        Domoticz.Debug("onMessage called")
+        try:
+            self.miktUnpacker.feed(Data)
+            for sentence in self.miktUnpacker:
+                reply, tag, words = SentenceParser.parse_sentence(sentence)
+
+                if tag == 'initial_login' and reply == '!done':
+                    self.miktConn.Send(sentence_pack([
+                        '/login',
+                        '=name=%s' % Parameters['Username'],
+                        '=response=%s' % password_encode(Parameters['Password'], words['ret']),
+                        '.tag=authorize'
+                    ]))
+
+                elif tag == 'authorize' and reply == '!done' and not self.miktAuthError:
+                    Domoticz.Log('Mikrotik logged in successfully')
+                    self.miktLoggedIn = True
+                    if Parameters['Mode3']:
+                        self._miktCommand([
+                            '/interface/listen',
+                            '?name=%s' % Parameters['Mode3'],
+                            '.tag=interface_status_update'
+                        ])
+                        self._miktCommand([
+                            '/interface/print',
+                            '?name=%s' % Parameters['Mode3'],
+                            '.tag=interface_status'
+                        ])
+
+                elif tag in ('interface_status', 'interface_status_update') and reply == '!re':
+                    if not self.statusInterfaceId:
+                        self.statusInterfaceId = words.get('.id', None)
+                    if words.get('running', None) is not None:
+                        self.statusRunning = words.get('running')
+                    if words.get('disabled', None) is not None:
+                        self.statusDisabled = words.get('disabled')
+
+                    if self.statusRunning:
+                        UpdateDevice(self.statusUnit, 1, '10', ShowInLog=True)
+                    elif self.statusDisabled:
+                        UpdateDevice(self.statusUnit, 0, '0', ShowInLog=True)
+                    else:
+                        UpdateDevice(self.statusUnit, 1, '20', ShowInLog=True)
+
+                elif tag == 'bw' and reply == '!re':
+                    UpdateDevice(self.bwDownUnit, 1, str(bitToMbit(words.get('rx-bits-per-second', 0))))
+                    UpdateDevice(self.bwUpUnit, 1, str(bitToMbit(words.get('tx-bits-per-second', 0))))
+
+                elif tag == 'authorize' and reply == '!trap':
+                    self.miktAuthError = True
+                    Domoticz.Error('Mikrotik login error [%s]' % words.get('message', None))
+
+                elif reply in ('!fatal', '!trap'):
+                    Domoticz.Error(
+                        'Mikrotik error. Reply [%s]. Message [%s]. Tag [%s].' % (
+                        reply, words.get('message', None), tag))
+
+        except UnpackerException as e:
+            Domoticz.Error('UnpackerException [%s]' % str(e))
+
+        except ParseException as e:
+            Domoticz.Error('ParseException [%s]' % str(e))
 
     def onCommand(self, Unit, Command, Level, Hue):
-        Domoticz.Debug("onCommand called for Unit " + str(Unit) + ": Parameter '" + str(Command) + "', Level: " + str(Level))
+        if self.statusUnit == Unit:
+            if self.statusInterfaceId is None:
+                Domoticz.Error('No interface ID')
+                return
 
-    def onNotification(self, Name, Subject, Text, Status, Priority, Sound, ImageFile):
-        Domoticz.Debug("Notification: " + Name + "," + Subject + "," + Text + "," + Status + "," + str(Priority) + "," + Sound + "," + ImageFile)
+            if self.statusDisabled is None or self.statusRunning is None:
+                Domoticz.Error('No current interface status')
+                return
+
+            # disable
+            if Level == 0 and not self.statusDisabled:
+                self._miktChangeInterfaceStatus(disabled=True)
+            # run
+            elif Level == 10 and not self.statusRunning:
+                self._miktChangeInterfaceStatus(disabled=True)
+                self._miktChangeInterfaceStatus(disabled=False)
+            # enable
+            elif Level == 20 and self.statusDisabled and not self.statusRunning:
+                self._miktChangeInterfaceStatus(disabled=False)
 
     def onDisconnect(self, Connection):
-        Domoticz.Debug("onDisconnect called")
+        self._miktResetLoginFlags()
 
     def onHeartbeat(self):
-        Domoticz.Debug("onHeartbeat called")
+        if not self.miktConn.Connected() and not self.miktConn.Connecting():
+            Domoticz.Log('Mikrotik re-connecting...')
+            self.miktConn.Connect()
+        else:
+            self._miktCommand([
+                '/interface/monitor-traffic',
+                '=interface=%s' % Parameters['Mode2'],
+                '=once=yes',
+                '=.proplist=rx-bits-per-second,tx-bits-per-second',
+                '.tag=bw'
+            ])
 
-        if not self.api:
-            Domoticz.Error('onHeartbeat - no connection to %s' % Parameters['Address'])
-            self.api = APIConnect(host=Parameters['Address'], port=int(Parameters['Port']),
-                                  username=Parameters['Username'], password=Parameters['Password'])
-            return
+    def _miktCommand(self, words_list):
+        if self.miktLoggedIn and self.miktConn.Connected():
+            try:
+                self.miktConn.Send(sentence_pack(words_list))
+            except PackException as e:
+                Domoticz.Error('PackException [%s]' % str(e))
 
-        try:
-            result, = self.api(cmd='/interface/monitor-traffic', interface=Parameters['Mode2'], once=True)
-            Domoticz.Debug('Traffic monitor: %s' % str(result))
-            UpdateDevice(self.bwDownUnit, 1, str(bitToMbit(result.get('rx-bits-per-second', 0))))
-            UpdateDevice(self.bwUpUnit, 1, str(bitToMbit(result.get('tx-bits-per-second', 0))))
-        except ConnectionError as e:
-            Domoticz.Error('onHeartbeat api exception [%s]: %s' % (e.__class__.__name__, str(e)))
-            self.api = None
-        except (TrapError, FatalError, MultiTrapError) as e:
-            Domoticz.Error('onHeartbeat api exception [%s]: %s' % (e.__class__.__name__, str(e)))
+    def _miktChangeInterfaceStatus(self, disabled):
+        self._miktCommand([
+            '/interface/set',
+            '=disabled=%s' % ('yes' if disabled else 'no'),
+            '=.id=%s' % self.statusInterfaceId,
+            '.tag=interface_set'
+        ])
 
-def APIConnect(host, port, username, password):
-    try:
-        return connect(host=host, port=port, username=username, password=password)
-    except (ConnectionError, TrapError, FatalError, MultiTrapError) as e:
-        Domoticz.Error('Connect exception: %s' % str(e))
-        return False
+    def _miktResetLoginFlags(self):
+        self.miktAuthError = False
+        self.miktLoggedIn = False
+
 
 def bitToMbit(value):
     return math.ceil(value / 1000000 * 100) / 100
 
-def UpdateDevice(Unit, nValue, sValue, AlwaysUpdate=False):
-    if Unit not in Devices: return
-    if Devices[Unit].nValue != nValue\
-        or Devices[Unit].sValue != sValue\
-        or AlwaysUpdate == True:
 
+def UpdateDevice(Unit, nValue, sValue, AlwaysUpdate=False, ShowInLog=False):
+    if Unit not in Devices: return
+    if Devices[Unit].nValue != nValue or Devices[Unit].sValue != sValue or AlwaysUpdate == True:
         Devices[Unit].Update(nValue, str(sValue))
-
-        Domoticz.Debug("Update %s: nValue %s - sValue %s" % (
-            Devices[Unit].Name,
-            nValue,
-            sValue
-        ))
-
-def UpdateIcon(Unit, iconID):
-    if Unit not in Devices: return
-    d = Devices[Unit]
-    if d.Image != iconID: d.Update(d.nValue, d.sValue, Image=iconID)
+        if ShowInLog:
+            Domoticz.Log("%s: nValue %s - sValue %s" % (
+                Devices[Unit].Name,
+                nValue,
+                sValue
+            ))
 
 
 global _plugin
 _plugin = BasePlugin()
 
+
 def onStart():
     global _plugin
     _plugin.onStart()
+
 
 def onStop():
     global _plugin
     _plugin.onStop()
 
+
 def onConnect(Connection, Status, Description):
     global _plugin
     _plugin.onConnect(Connection, Status, Description)
 
-def onMessage(Connection, Data):
+
+def onMessage(Connection, Data, Status=None, Extra=None):
     global _plugin
     _plugin.onMessage(Connection, Data)
+
 
 def onCommand(Unit, Command, Level, Hue):
     global _plugin
     _plugin.onCommand(Unit, Command, Level, Hue)
 
-def onNotification(Name, Subject, Text, Status, Priority, Sound, ImageFile):
-    global _plugin
-    _plugin.onNotification(Name, Subject, Text, Status, Priority, Sound, ImageFile)
 
 def onDisconnect(Connection):
     global _plugin
     _plugin.onDisconnect(Connection)
 
+
 def onHeartbeat():
     global _plugin
     _plugin.onHeartbeat()
 
-    # Generic helper functions
+
 def DumpConfigToLog():
     for x in Parameters:
         if Parameters[x] != "":
-            Domoticz.Debug( "'" + x + "':'" + str(Parameters[x]) + "'")
+            Domoticz.Debug("'" + x + "':'" + str(Parameters[x]) + "'")
     Domoticz.Debug("Device count: " + str(len(Devices)))
     for x in Devices:
         Domoticz.Debug("Device:           " + str(x) + " - " + str(Devices[x]))
