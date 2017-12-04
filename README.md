@@ -2,7 +2,7 @@
 
 Plugin supports:
 * Bandwidth usage monitor for selected interface.
-* View/Manage status of interface
+* Manage interface status
 
 *See this [link](https://www.domoticz.com/wiki/Using_Python_plugins) for more information on the Domoticz plugins.*
 
