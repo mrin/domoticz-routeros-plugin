@@ -1,5 +1,5 @@
 """
-<plugin key="mikrotik-routeros" name="Mikrotik RouterOS" author="mrin" version="0.1.1" wikilink="https://github.com/mrin/domoticz-routeros-plugin" externallink="">
+<plugin key="mikrotik-routeros" name="Mikrotik RouterOS" author="mrin" version="0.1.0" wikilink="https://github.com/mrin/domoticz-routeros-plugin" externallink="">
     <params>
         <param field="Address" label="IP address" width="200px" required="true" default="192.168.1.1"/>
         <param field="Port" label="API Port" width="200px" required="true" default="8728"/>
