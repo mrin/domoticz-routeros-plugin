@@ -77,7 +77,7 @@ Go to **IP** -> **Services** and enable **api** service.
 
 2. Creating API user. 
 
-Go to **System** -> **Users**, tab **Groups**. Create new group with permissions: ```api```, ```read```.
+Go to **System** -> **Users**, tab **Groups**. Create new group with permissions: ```api```, ```read```, ```write```.
 
 Then after group created go to tab ```Users``` and create new. Associate this user with group previously created.
 
