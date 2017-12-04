@@ -14,7 +14,7 @@ Before installation plugin check the `python3` and `python3-dev` is installed fo
 
 Also need to install setuptools and virtualenv:
 
-```sudo pip3 install -U setuptools virtualenv```.
+```sudo pip3 install -U setuptools virtualenv```
 
 Then go to the plugins folder:
 ```
