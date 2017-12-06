@@ -22,6 +22,7 @@ cd domoticz/plugins
 git clone https://github.com/mrin/domoticz-routeros-plugin.git mikrotik
 
 # installing dependencies:
+cd mikrotik
 virtualenv -p python3 .env
 source .env/bin/activate
 pip install git+https://github.com/mrin/miktapi
