@@ -8,9 +8,9 @@ Plugin supports:
 
 ## Installation
 
-Before installation plugin check the `python3` and `python3-dev` is installed for Domoticz plugin system:
+Before installation plugin check the `python3`, `python3-dev` and `python3-pip` is installed for Domoticz plugin system:
 
-```sudo apt-get install python3 python3-dev```
+```sudo apt-get install python3 python3-dev python3-pip```
 
 Also need to install setuptools and virtualenv:
 
