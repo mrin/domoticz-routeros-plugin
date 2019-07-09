@@ -27,7 +27,7 @@ for mp in module_paths:
     sys.path.append(mp)
 
 from miktapi.sentence import sentence_pack, SentenceUnpacker
-from miktapi.helper import SentenceParser, password_encode
+from miktapi.helper import SentenceParser
 from miktapi.exceptions import UnpackerException, ParseException, PackException
 
 
