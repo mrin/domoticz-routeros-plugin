@@ -105,7 +105,7 @@ class BasePlugin:
                     self.miktConn.Send(sentence_pack([
                         '/login',
                         '=name=%s' % Parameters['Username'],
-                        '=response=%s' % password_encode(Parameters['Password'], words['ret']),
+                        '=password=%s' % Parameters['Password'],
                         '.tag=authorize'
                     ]))
 
